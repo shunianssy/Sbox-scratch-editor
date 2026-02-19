@@ -7,7 +7,14 @@ import keyMirror from 'keymirror';
 
 import log from './log.js';
 
-import hexUrl from '../generated/microbit-hex-url.cjs';
+// Try to import hexUrl, but handle it gracefully if it doesn't exist
+let hexUrl;
+try {
+    hexUrl = require('../generated/microbit-hex-url.cjs');
+} catch (error) {
+    log.warn('Could not load microbit-hex-url.cjs:', error.message);
+    hexUrl = null;
+}
 
 /**
  * @typedef {import('@microbit/microbit-universal-hex').IndividualHex} IndividualHex
@@ -73,8 +80,12 @@ const getHexVersion = hex => {
  * @returns {Promise<Map<DeviceVersion, Uint8Array>>} A map of micro:bit versions to hex file contents.
  * @throws {Error} If the fetch fails or cannot be interpreted as text.
  * @throws {Error} If the hex file is not in universal format.
+ * @throws {Error} If the hex URL is not available.
  */
 const getHexMap = async () => {
+    if (!hexUrl) {
+        throw new Error('micro:bit hex file URL is not available. Please run the prepublish script.');
+    }
     const response = await fetch(hexUrl);
     const hex = await response.text();
 

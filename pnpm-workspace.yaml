@@ -1,0 +1,6 @@
+onlyBuiltDependencies:
+  - "scratch-blocks"
+  - "scratch-vm"
+  - "scratch-render"
+  - "scratch-audio"
+  - "scratch-paint"

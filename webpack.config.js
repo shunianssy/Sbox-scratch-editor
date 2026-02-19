@@ -69,11 +69,10 @@ const base = {
         rules: [{
             test: /\.jsx?$/,
             loader: 'babel-loader',
-            include: [
-                path.resolve(__dirname, 'src'),
-                /node_modules[\\/]scratch-[^\\/]+[\\/]src/,
-                /node_modules[\\/]pify/,
-                /node_modules[\\/]@vernier[\\/]godirect/
+            exclude: [
+                /node_modules[\\/]scratch-blocks/,
+                /node_modules[\\/]scratch-render/,
+                /node_modules[\\/]scratch-vm/
             ],
             options: {
                 // Explicitly disable babelrc so we don't catch various config
