@@ -5,7 +5,7 @@ import {defineMessages, FormattedMessage, injectIntl, intlShape} from 'react-int
 import PropTypes from 'prop-types';
 import bindAll from 'lodash.bindall';
 import bowser from 'bowser';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 import VM from 'scratch-vm';
 
@@ -27,6 +27,9 @@ import DeletionRestorer from '../../containers/deletion-restorer.jsx';
 import TurboMode from '../../containers/turbo-mode.jsx';
 import MenuBarHOC from '../../containers/menu-bar-hoc.jsx';
 import SettingsMenu from './settings-menu.jsx';
+import AuthModal from '../auth/auth-modal.jsx';
+import ProjectManager from '../auth/project-manager.jsx';
+import AuthAPI from '../../lib/auth-api.js';
 
 import FramerateChanger from '../../containers/tw-framerate-changer.jsx';
 import ChangeUsername from '../../containers/tw-change-username.jsx';
@@ -227,14 +230,72 @@ class MenuBar extends React.Component {
             'handleKeyPress',
             'handleRestoreOption',
             'getSaveToComputerHandler',
-            'restoreOptionMessage'
+            'restoreOptionMessage',
+            'handleAuthSuccess',
+            'handleLogout'
         ]);
+        
+        // 账号管理状态
+        this.state = {
+            isAuthModalOpen: false,
+            isProjectManagerOpen: false,
+            isAuthenticated: false,
+            authToken: null,
+            userId: null
+        };
     }
     componentDidMount () {
         document.addEventListener('keydown', this.handleKeyPress);
+        // 检查用户认证状态
+        this.checkAuthStatus();
     }
+    
+    componentDidUpdate (prevProps, prevState) {
+        // 检查认证状态变化
+        if (prevState.isAuthenticated !== this.state.isAuthenticated) {
+            this.checkAuthStatus();
+        }
+    }
+    
     componentWillUnmount () {
         document.removeEventListener('keydown', this.handleKeyPress);
+    }
+    
+    // 检查用户认证状态
+    checkAuthStatus () {
+        const auth = AuthAPI.getAuth();
+        if (auth) {
+            this.setState({
+                isAuthenticated: true,
+                authToken: auth.token,
+                userId: auth.userId
+            });
+        } else {
+            this.setState({
+                isAuthenticated: false,
+                authToken: null,
+                userId: null
+            });
+        }
+    }
+    
+    // 处理认证成功
+    handleAuthSuccess (authData) {
+        this.setState({
+            isAuthenticated: true,
+            authToken: authData.access_token,
+            userId: authData.user_id
+        });
+    }
+    
+    // 处理登出
+    handleLogout () {
+        AuthAPI.clearAuth();
+        this.setState({
+            isAuthenticated: false,
+            authToken: null,
+            userId: null
+        });
     }
     handleClickNew () {
         // if the project is dirty, and user owns the project, we will autosave.
@@ -1038,7 +1099,49 @@ class MenuBar extends React.Component {
                     <TWSaveStatus
                         showSaveFilePicker={this.props.showSaveFilePicker}
                     />
+                    
+                    {/* 账号管理 */}
+                    {this.state.isAuthenticated ? (
+                        <div className={styles.authButtons}>
+                            <Button
+                                className={styles.authButton}
+                                variant="secondary"
+                                onClick={() => this.setState({ isProjectManagerOpen: true })}
+                            >
+                                我的项目
+                            </Button>
+                            <Button
+                                className={styles.authButton}
+                                variant="secondary"
+                                onClick={this.handleLogout}
+                            >
+                                登出
+                            </Button>
+                        </div>
+                    ) : (
+                        <Button
+                            className={styles.authButton}
+                            variant="primary"
+                            onClick={() => this.setState({ isAuthModalOpen: true })}
+                        >
+                            登录/注册
+                        </Button>
+                    )}
                 </div>
+                
+                {/* 认证模态框 */}
+                <AuthModal
+                    isOpen={this.state.isAuthModalOpen}
+                    onRequestClose={() => this.setState({ isAuthModalOpen: false })}
+                    onAuthSuccess={this.handleAuthSuccess}
+                />
+                
+                {/* 项目管理模态框 */}
+                <ProjectManager
+                    isOpen={this.state.isProjectManagerOpen}
+                    onRequestClose={() => this.setState({ isProjectManagerOpen: false })}
+                    authToken={this.state.authToken}
+                />
 
                 {aboutButton}
             </Box>

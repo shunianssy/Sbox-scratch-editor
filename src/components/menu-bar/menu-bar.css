@@ -233,3 +233,15 @@
     color: inherit;
     text-decoration: none;
 }
+
+/* 账号管理按钮样式 */
+.authButtons {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.authButton {
+    margin-left: 0.5rem;
+    height: 34px;
+}

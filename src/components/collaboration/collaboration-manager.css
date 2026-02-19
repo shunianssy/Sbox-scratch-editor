@@ -1,0 +1,98 @@
+.collaboration-manager {
+    position: relative;
+}
+
+.collaboration-panel {
+    position: fixed;
+    top: 60px;
+    right: 20px;
+    width: 250px;
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    padding: 15px;
+}
+
+.collaboration-panel h3 {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    color: #333;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+.collaboration-status {
+    margin-bottom: 15px;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.collaboration-status-disconnected {
+    background-color: #ffebee;
+    color: #c62828;
+}
+
+.collaboration-status-connecting {
+    background-color: #fff3e0;
+    color: #ef6c00;
+}
+
+.collaboration-status-connected {
+    background-color: #e8f5e8;
+    color: #2e7d32;
+}
+
+.collaboration-status-text {
+    display: block;
+}
+
+.collaboration-error {
+    display: block;
+    margin-top: 5px;
+    font-size: 12px;
+    color: #c62828;
+}
+
+.connected-users {
+    margin-top: 15px;
+}
+
+.connected-users h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #666;
+}
+
+.connected-users ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.connected-users li {
+    padding: 5px 0;
+    font-size: 13px;
+    color: #333;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.connected-users li:last-child {
+    border-bottom: none;
+}
+
+.connected-users li.current-user {
+    font-weight: bold;
+    color: #4a90e2;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .collaboration-panel {
+        width: 200px;
+        right: 10px;
+        top: 50px;
+    }
+}

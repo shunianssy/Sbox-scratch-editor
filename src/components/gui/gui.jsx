@@ -20,6 +20,7 @@ import MenuBar from '../menu-bar/menu-bar.jsx';
 import CostumeLibrary from '../../containers/costume-library.jsx';
 import BackdropLibrary from '../../containers/backdrop-library.jsx';
 import Watermark from '../../containers/watermark.jsx';
+import CollaborationManager from '../collaboration/collaboration-manager.jsx';
 
 import Backpack from '../../containers/backpack.jsx';
 import BrowserModal from '../browser-modal/browser-modal.jsx';
@@ -73,6 +74,8 @@ const getFullscreenBackgroundColor = () => {
 const fullscreenBackgroundColor = getFullscreenBackgroundColor();
 
 const GUIComponent = props => {
+    const [isCollaborating, setIsCollaborating] = React.useState(false);
+    
     const {
         accountNavOpen,
         activeTabIndex,
@@ -162,6 +165,25 @@ const GUIComponent = props => {
         vm,
         ...componentProps
     } = omit(props, 'dispatch');
+    
+    // 处理协作开始
+    const handleCollaborationStart = () => {
+        setIsCollaborating(true);
+        console.log('协作开始');
+        // 禁用整理积木功能
+        const { setCollaborationMode } = require('../../lib/collaboration-manager');
+        setCollaborationMode(true);
+    };
+    
+    // 处理协作结束
+    const handleCollaborationEnd = () => {
+        setIsCollaborating(false);
+        console.log('协作结束');
+        // 启用整理积木功能
+        const { setCollaborationMode } = require('../../lib/collaboration-manager');
+        setCollaborationMode(false);
+    };
+    
     if (children) {
         return <Box {...componentProps}>{children}</Box>;
     }
@@ -452,6 +474,13 @@ const GUIComponent = props => {
                     </Box>
                 </Box>
                 <DragLayer />
+                
+                {/* 协作管理 */}
+                <CollaborationManager
+                    vm={vm}
+                    onCollaborationStart={handleCollaborationStart}
+                    onCollaborationEnd={handleCollaborationEnd}
+                />
             </Box>
         );
     }}</MediaQuery>);
