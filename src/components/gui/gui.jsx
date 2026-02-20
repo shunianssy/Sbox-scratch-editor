@@ -76,6 +76,7 @@ const fullscreenBackgroundColor = getFullscreenBackgroundColor();
 
 const GUIComponent = props => {
     const [isCollaborating, setIsCollaborating] = React.useState(false);
+    const [collaborationUserCount, setCollaborationUserCount] = React.useState(0);
     
     const {
         accountNavOpen,
@@ -326,6 +327,7 @@ const GUIComponent = props => {
                     canSave={canSave}
                     canShare={canShare}
                     className={styles.menuBarPosition}
+                    collaborationUserCount={collaborationUserCount}
                     enableCommunity={enableCommunity}
                     isShared={isShared}
                     isTotallyNormal={isTotallyNormal}
@@ -481,6 +483,7 @@ const GUIComponent = props => {
                     vm={vm}
                     onCollaborationStart={handleCollaborationStart}
                     onCollaborationEnd={handleCollaborationEnd}
+                    onUserCountChange={setCollaborationUserCount}
                 />
                 
                 {/* 全局Toast通知 */}

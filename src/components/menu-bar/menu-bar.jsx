@@ -1100,6 +1100,14 @@ class MenuBar extends React.Component {
                         showSaveFilePicker={this.props.showSaveFilePicker}
                     />
                     
+                    {/* 协作用户数量指示器 */}
+                    {this.props.collaborationUserCount > 0 && (
+                        <div className={styles.collaborationIndicator} title={`实时协作中，共 ${this.props.collaborationUserCount} 人在线`}>
+                            <span className={styles.collaborationIcon}>👥</span>
+                            <span className={styles.collaborationCount}>{this.props.collaborationUserCount}</span>
+                        </div>
+                    )}
+                    
                     {/* 账号管理 */}
                     {this.state.isAuthenticated ? (
                         <div className={styles.authButtons}>
@@ -1175,6 +1183,7 @@ MenuBar.propTypes = {
     canSave: PropTypes.bool,
     canShare: PropTypes.bool,
     className: PropTypes.string,
+    collaborationUserCount: PropTypes.number,
     errors: PropTypes.arrayOf(PropTypes.shape({
         sprite: PropTypes.string,
         error: PropTypes.string,

@@ -12,8 +12,12 @@ const SYNC_INTERVAL = 1000;
 const MAX_SYNC_INTERVAL = 3000;
 // 最小同步间隔（毫秒）- 防止过于频繁的同步
 const MIN_SYNC_INTERVAL = 300;
+// 工作区状态恢复延迟（毫秒）
+const WORKSPACE_RESTORE_DELAY = 100;
+// 拖拽检测延迟（毫秒）
+const DRAG_CHECK_DELAY = 50;
 
-const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) => {
+const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd, onUserCountChange }) => {
     const [isCollaborating, setIsCollaborating] = useState(false);
     const [connectedUsers, setConnectedUsers] = useState([]);
     const [connectionStatus, setConnectionStatus] = useState('disconnected');
@@ -39,11 +43,17 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
     const connectionStatusRef = useRef('disconnected');
     // 是否已经初始化
     const isInitializedRef = useRef(false);
+    // 是否已经接收过项目同步（用于新用户加入时避免重复加载）
+    const hasReceivedProjectSync = useRef(false);
     // 回调引用
     const onCollaborationStartRef = useRef(onCollaborationStart);
     const onCollaborationEndRef = useRef(onCollaborationEnd);
     // 当前用户 ID
     const currentUserIdRef = useRef(null);
+    // 是否正在拖拽积木
+    const isDraggingBlock = useRef(false);
+    // 拖拽积木的 ID
+    const draggingBlockId = useRef(null);
 
     // 更新 VM 引用
     useEffect(() => {
@@ -66,6 +76,63 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
         onCollaborationEndRef.current = onCollaborationEnd;
     }, [onCollaborationStart, onCollaborationEnd]);
 
+    // 用户数量变化时通知父组件
+    useEffect(() => {
+        if (onUserCountChange && isCollaborating) {
+            onUserCountChange(connectedUsers.length + 1);
+        }
+    }, [connectedUsers.length, isCollaborating, onUserCountChange]);
+
+    // 检测是否有积木正在被拖拽
+    const checkDraggingState = useCallback(() => {
+        try {
+            if (window.Blockly && window.Blockly.getMainWorkspace) {
+                const workspace = window.Blockly.getMainWorkspace();
+                if (workspace) {
+                    // 检查是否有正在拖拽的积木
+                    const dragSurface = workspace.getBlockDragSurface ? workspace.getBlockDragSurface() : null;
+                    if (dragSurface && dragSurface.getBlock) {
+                        const draggingBlock = dragSurface.getBlock();
+                        if (draggingBlock) {
+                            isDraggingBlock.current = true;
+                            draggingBlockId.current = draggingBlock.id;
+                            return true;
+                        }
+                    }
+                    // 检查 gesture 是否正在拖拽
+                    if (workspace.currentGesture_ && workspace.currentGesture_.isDragging_) {
+                        isDraggingBlock.current = true;
+                        return true;
+                    }
+                }
+            }
+        } catch (err) {
+            // 忽略错误
+        }
+        isDraggingBlock.current = false;
+        draggingBlockId.current = null;
+        return false;
+    }, []);
+
+    // 等待拖拽结束
+    const waitForDragEnd = useCallback(() => {
+        return new Promise((resolve) => {
+            let checkCount = 0;
+            const maxChecks = 20; // 最多检查 20 次（1秒）
+            
+            const checkInterval = setInterval(() => {
+                checkCount++;
+                const isDragging = checkDraggingState();
+                
+                if (!isDragging || checkCount >= maxChecks) {
+                    clearInterval(checkInterval);
+                    // 额外等待一小段时间确保拖拽完全结束
+                    setTimeout(resolve, DRAG_CHECK_DELAY);
+                }
+            }, DRAG_CHECK_DELAY);
+        });
+    }, [checkDraggingState]);
+
     // 获取当前项目 JSON
     const getCurrentProjectJSON = useCallback(() => {
         const currentVm = vmRef.current;
@@ -87,11 +154,18 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
             if (window.Blockly && window.Blockly.getMainWorkspace) {
                 const workspace = window.Blockly.getMainWorkspace();
                 if (workspace) {
-                    return {
+                    const state = {
                         scrollX: workspace.scrollX || 0,
                         scrollY: workspace.scrollY || 0,
-                        scale: workspace.scale || 1
+                        scale: workspace.scale || 1,
+                        // 保存更多状态信息
+                        startX: workspace.startX || 0,
+                        startY: workspace.startY || 0,
+                        // 保存当前选中的积木
+                        selectedBlockId: workspace.selectedBlockId || null
                     };
+                    console.log('[协作] 获取工作区状态:', state);
+                    return state;
                 }
             }
         } catch (err) {
@@ -105,20 +179,47 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
         if (!state) return;
         
         try {
-            // 延迟执行，等待 Blockly 工作区更新完成
-            setTimeout(() => {
+            // 使用 requestAnimationFrame 确保在下一帧渲染时恢复状态
+            const restoreState = () => {
                 if (window.Blockly && window.Blockly.getMainWorkspace) {
                     const workspace = window.Blockly.getMainWorkspace();
                     if (workspace) {
-                        // 恢复滚动位置
-                        if (state.scrollX !== undefined && state.scrollY !== undefined) {
-                            workspace.scrollX = state.scrollX;
-                            workspace.scrollY = state.scrollY;
+                        // 先暂停重绘
+                        const originalRendered = workspace.rendered;
+                        workspace.rendered = false;
+                        
+                        try {
+                            // 恢复滚动位置
+                            if (state.scrollX !== undefined && state.scrollY !== undefined) {
+                                workspace.scrollX = state.scrollX;
+                                workspace.scrollY = state.scrollY;
+                            }
+                            // 恢复起始位置
+                            if (state.startX !== undefined && state.startY !== undefined) {
+                                workspace.startX = state.startX;
+                                workspace.startY = state.startY;
+                            }
+                            // 恢复缩放级别
+                            if (state.scale !== undefined) {
+                                workspace.scale = state.scale;
+                            }
+                            // 恢复选中状态
+                            if (state.selectedBlockId) {
+                                const block = workspace.getBlockById(state.selectedBlockId);
+                                if (block) {
+                                    workspace.selectedBlockId = state.selectedBlockId;
+                                }
+                            }
+                        } finally {
+                            // 恢复重绘状态
+                            workspace.rendered = originalRendered;
                         }
-                        // 恢复缩放级别
-                        if (state.scale !== undefined) {
-                            workspace.scale = state.scale;
+                        
+                        // 使用 translate 来设置工作区偏移
+                        if (workspace.updateInverseScreenCTM) {
+                            workspace.updateInverseScreenCTM();
                         }
+                        
                         // 触发重绘
                         if (workspace.resize) {
                             workspace.resize();
@@ -127,10 +228,20 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
                         if (workspace.scrollbar) {
                             workspace.scrollbar.resize();
                         }
-                        console.log('[协作] 已恢复工作区状态');
+                        // 重新渲染工作区
+                        if (workspace.render) {
+                            workspace.render();
+                        }
+                        
+                        console.log('[协作] 已恢复工作区状态:', state);
                     }
                 }
-            }, 50);
+            };
+            
+            // 延迟执行，等待 Blockly 工作区更新完成
+            setTimeout(() => {
+                requestAnimationFrame(restoreState);
+            }, WORKSPACE_RESTORE_DELAY);
         } catch (err) {
             console.warn('[协作] 恢复工作区状态失败:', err);
         }
@@ -299,9 +410,15 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
     }, []);
 
     // 处理积木变更
-    const handleBlockChange = useCallback((blockData) => {
+    const handleBlockChange = useCallback(async (blockData) => {
         if (isApplyingRemoteChange.current) {
             return;
+        }
+        
+        // 检查是否有积木正在被拖拽，如果有则等待
+        if (checkDraggingState()) {
+            console.log('[协作] 检测到拖拽中，等待拖拽结束...');
+            await waitForDragEnd();
         }
         
         console.log('[协作] 处理积木变更:', blockData.changeType);
@@ -325,6 +442,12 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
         const messageTime = blockData.timestamp || 0;
         if (messageTime > 0 && (now - messageTime) > MAX_SYNC_INTERVAL * 2) {
             console.log('[协作] 忽略过时的更新，时间差:', now - messageTime, 'ms');
+            return;
+        }
+
+        // 再次检查拖拽状态
+        if (checkDraggingState()) {
+            console.log('[协作] 仍有拖拽，跳过此次更新');
             return;
         }
 
@@ -352,17 +475,17 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
                 .finally(() => {
                     setTimeout(() => {
                         isApplyingRemoteChange.current = false;
-                    }, 100);
+                    }, WORKSPACE_RESTORE_DELAY);
                 });
             
         } catch (error) {
             console.error('[协作] 处理积木变更失败:', error);
             isApplyingRemoteChange.current = false;
         }
-    }, [getWorkspaceState, restoreWorkspaceState]);
+    }, [checkDraggingState, waitForDragEnd, getWorkspaceState, restoreWorkspaceState]);
 
     // 处理项目同步（新用户加入时收到）
-    const handleProjectSync = useCallback((syncData) => {
+    const handleProjectSync = useCallback(async (syncData) => {
         console.log('[协作] 收到项目同步请求');
         
         // 检查是否是发给自己的
@@ -382,6 +505,19 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
             return;
         }
 
+        // 如果已经接收过项目同步，并且这个同步不是发给自己的，则跳过
+        // 这样可以避免新用户加入时被错误地加载其他人的空项目
+        if (hasReceivedProjectSync.current && !syncData.forUser) {
+            console.log('[协作] 已经同步过项目，跳过非定向同步');
+            return;
+        }
+
+        // 检查是否有积木正在被拖拽
+        if (checkDraggingState()) {
+            console.log('[协作] 检测到拖拽中，等待拖拽结束...');
+            await waitForDragEnd();
+        }
+
         // 保存当前工作区状态
         const workspaceState = getWorkspaceState();
 
@@ -395,6 +531,7 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
                     console.log('[协作] 同步项目已加载');
                     lastSyncedJSON.current = syncData.projectJSON;
                     lastSyncTime.current = Date.now();
+                    hasReceivedProjectSync.current = true;
                     
                     // 恢复工作区状态
                     restoreWorkspaceState(workspaceState);
@@ -407,14 +544,14 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
                 .finally(() => {
                     setTimeout(() => {
                         isApplyingRemoteChange.current = false;
-                    }, 100);
+                    }, WORKSPACE_RESTORE_DELAY);
                 });
             
         } catch (error) {
             console.error('[协作] 处理项目同步失败:', error);
             isApplyingRemoteChange.current = false;
         }
-    }, [getWorkspaceState, restoreWorkspaceState]);
+    }, [checkDraggingState, waitForDragEnd, getWorkspaceState, restoreWorkspaceState]);
 
     // 处理协作消息
     const handleCollaborationMessage = useCallback((message) => {
@@ -466,7 +603,24 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
             }
             
             // 初始化同步状态
-            lastSyncedJSON.current = getCurrentProjectJSON();
+            // 注意：不立即设置 lastSyncedJSON，让新用户等待接收项目同步
+            // 如果是新用户，会等待其他用户发送项目
+            // 如果是房间第一个用户，会使用自己的项目
+            const currentProjectJSON = getCurrentProjectJSON();
+            if (currentProjectJSON) {
+                // 只有当项目非空时才设置
+                try {
+                    const projectObj = JSON.parse(currentProjectJSON);
+                    if (projectObj && projectObj.targets && projectObj.targets.length > 0) {
+                        lastSyncedJSON.current = currentProjectJSON;
+                        console.log('[协作] 已有项目，初始化同步状态');
+                    } else {
+                        console.log('[协作] 项目为空，等待接收同步');
+                    }
+                } catch (e) {
+                    console.log('[协作] 项目解析失败，等待接收同步');
+                }
+            }
             lastSyncTime.current = Date.now();
             
             // 启动定期同步
@@ -561,63 +715,16 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // 空依赖数组，只在组件挂载时执行一次
     
-    // 渲染协作状态指示器
-    const renderStatusIndicator = () => {
-        let statusText = '未连接';
-        let statusClass = 'collaboration-status-disconnected';
-        
-        switch (connectionStatus) {
-            case 'connecting':
-                statusText = '连接中...';
-                statusClass = 'collaboration-status-connecting';
-                break;
-            case 'connected':
-                statusText = `已连接 (${connectedUsers.length + 1}人)`;
-                statusClass = 'collaboration-status-connected';
-                break;
-            default:
-                break;
-        }
-        
-        return (
-            <div className={`collaboration-status ${statusClass}`}>
-                <span className="collaboration-status-text">{statusText}</span>
-                {error && (
-                    <span className="collaboration-error">{error}</span>
-                )}
-            </div>
-        );
-    };
-    
-    return (
-        <div className="collaboration-manager">
-            {isCollaborating && (
-                <div className="collaboration-panel">
-                    <h3>🤝 实时协作</h3>
-                    {renderStatusIndicator()}
-                    <div className="connected-users">
-                        <h4>在线用户 ({connectedUsers.length + 1}人)</h4>
-                        <ul>
-                            {connectedUsers.map((userId) => (
-                                <li key={userId}>
-                                    用户 {userId.toString().substring(0, 8)}...
-                                </li>
-                            ))}
-                            <li className="current-user">
-                                你 (当前用户)
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
+    // 不再渲染大面板，协作状态通过 onUserCountChange 回调传递给父组件
+    // 由 menu-bar 组件显示简洁的用户数量指示器
+    return null;
 };
 
 CollaborationManager.propTypes = {
     vm: PropTypes.object.isRequired,
     onCollaborationStart: PropTypes.func,
-    onCollaborationEnd: PropTypes.func
+    onCollaborationEnd: PropTypes.func,
+    onUserCountChange: PropTypes.func
 };
 
 export default CollaborationManager;

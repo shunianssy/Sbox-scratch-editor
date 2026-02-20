@@ -245,3 +245,28 @@
     margin-left: 0.5rem;
     height: 34px;
 }
+
+/* 协作用户数量指示器样式 */
+.collaborationIndicator {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    background-color: #4a90e2;
+    color: white;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: bold;
+    margin-right: 0.5rem;
+    cursor: default;
+    user-select: none;
+}
+
+.collaborationIcon {
+    font-size: 16px;
+}
+
+.collaborationCount {
+    min-width: 16px;
+    text-align: center;
+}
