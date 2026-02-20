@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import Modal from '../modal/modal.jsx';
 import Button from '../button/button.jsx';
+import { toastManager } from '../toast/toast.jsx';
 import './auth-modal.css';
 
 const AuthModal = ({ isOpen, onRequestClose, onAuthSuccess }) => {
@@ -10,10 +11,22 @@ const AuthModal = ({ isOpen, onRequestClose, onAuthSuccess }) => {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+    
+    // 重置状态当模态框打开时
+    useEffect(() => {
+        if (isOpen) {
+            setError('');
+            setSuccess('');
+            setShowSuccessAnimation(false);
+        }
+    }, [isOpen]);
     
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+        setSuccess('');
         setLoading(true);
         
         try {
@@ -23,20 +36,41 @@ const AuthModal = ({ isOpen, onRequestClose, onAuthSuccess }) => {
             let result;
             if (activeTab === 'login') {
                 result = await AuthAPI.login(email, password);
+                setSuccess('✅ 登录成功！欢迎回来，已自动为您保存登录状态');
             } else {
                 result = await AuthAPI.register(email, password);
+                setSuccess('✅ 注册成功！欢迎加入，已自动为您保存登录状态');
             }
+            
+            // 显示成功动画
+            setShowSuccessAnimation(true);
             
             // 保存认证信息
             AuthAPI.saveAuth(result.access_token, result.user_id);
             
+            // 显示全局Toast通知
+            if (activeTab === 'login') {
+                toastManager.success('登录成功！欢迎回来', 5000);
+            } else {
+                toastManager.success('注册成功！欢迎加入', 5000);
+            }
+            
             // 通知父组件认证成功
             onAuthSuccess(result);
             
-            // 关闭模态框
-            onRequestClose();
+            // 延迟关闭模态框，让用户看到成功提示（增加到4秒）
+            setTimeout(() => {
+                onRequestClose();
+                // 重置表单状态
+                setEmail('');
+                setPassword('');
+                setSuccess('');
+                setError('');
+                setShowSuccessAnimation(false);
+            }, 4000);
         } catch (err) {
             setError(err.message || '操作失败，请重试');
+            setShowSuccessAnimation(false);
         } finally {
             setLoading(false);
         }
@@ -70,6 +104,13 @@ const AuthModal = ({ isOpen, onRequestClose, onAuthSuccess }) => {
                 {error && (
                     <div className="auth-error">
                         {error}
+                    </div>
+                )}
+                
+                {success && (
+                    <div className={`auth-success ${showSuccessAnimation ? 'auth-success-animate' : ''}`}>
+                        <span className="auth-success-icon">✓</span>
+                        <span className="auth-success-text">{success}</span>
                     </div>
                 )}
                 

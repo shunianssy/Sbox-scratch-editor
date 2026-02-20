@@ -24,25 +24,43 @@ class CollaborationAPI {
     connect(projectToken, authToken) {
         return new Promise((resolve, reject) => {
             try {
+                // 清理之前的连接
+                if (this.socket) {
+                    try {
+                        this.socket.close();
+                    } catch (e) {
+                        console.error('关闭旧连接失败:', e);
+                    }
+                    this.socket = null;
+                }
+                
                 this.projectToken = projectToken;
                 this.socket = new WebSocket(`${WS_BASE_URL}/${projectToken}`);
                 
                 this.socket.onopen = () => {
                     console.log('WebSocket连接已打开');
                     // 发送认证信息
-                    this.socket.send(JSON.stringify({
-                        type: 'auth',
-                        token: authToken
-                    }));
-                    // 通知回调
-                    this.callbacks.connect.forEach(callback => callback());
-                    resolve();
+                    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                        this.socket.send(JSON.stringify({
+                            type: 'auth',
+                            token: authToken
+                        }));
+                        // 通知回调
+                        this.callbacks.connect.forEach(callback => callback());
+                        resolve();
+                    } else {
+                        console.error('WebSocket连接状态异常:', this.socket ? this.socket.readyState : 'null');
+                        reject(new Error('WebSocket连接状态异常'));
+                    }
                 };
                 
                 this.socket.onmessage = (event) => {
                     try {
                         const message = JSON.parse(event.data);
-                        console.log('收到WebSocket消息:', message);
+                        // 只在控制台显示关键消息
+                        if (message.type === 'user_joined' || message.type === 'user_left') {
+                            console.log('收到WebSocket消息:', message);
+                        }
                         
                         // 处理特定类型的消息
                         switch (message.type) {
@@ -83,7 +101,11 @@ class CollaborationAPI {
      */
     disconnect() {
         if (this.socket) {
-            this.socket.close();
+            try {
+                this.socket.close();
+            } catch (e) {
+                console.error('关闭连接失败:', e);
+            }
             this.socket = null;
         }
     }
@@ -144,7 +166,10 @@ class CollaborationAPI {
      */
     on(event, callback) {
         if (this.callbacks[event]) {
-            this.callbacks[event].push(callback);
+            // 避免重复注册相同的回调
+            if (!this.callbacks[event].includes(callback)) {
+                this.callbacks[event].push(callback);
+            }
         }
     }
     
@@ -157,6 +182,20 @@ class CollaborationAPI {
         if (this.callbacks[event]) {
             this.callbacks[event] = this.callbacks[event].filter(cb => cb !== callback);
         }
+    }
+    
+    /**
+     * 清空所有事件回调
+     */
+    clearCallbacks() {
+        this.callbacks = {
+            connect: [],
+            disconnect: [],
+            message: [],
+            error: [],
+            userJoined: [],
+            userLeft: []
+        };
     }
     
     /**

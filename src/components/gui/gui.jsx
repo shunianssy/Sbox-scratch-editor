@@ -39,6 +39,7 @@ import TWFontsModal from '../../containers/tw-fonts-modal.jsx';
 import TWUnknownPlatformModal from '../../containers/tw-unknown-platform-modal.jsx';
 import TWInvalidProjectModal from '../../containers/tw-invalid-project-modal.jsx';
 import TWWindChimeSubmitter from '../../containers/tw-windchime-submitter.jsx';
+import { ToastContainer } from '../toast/toast.jsx';
 
 import {STAGE_SIZE_MODES, FIXED_WIDTH, UNCONSTRAINED_NON_STAGE_WIDTH} from '../../lib/layout-constants';
 import {resolveStageSize} from '../../lib/screen-utils';
@@ -481,6 +482,9 @@ const GUIComponent = props => {
                     onCollaborationStart={handleCollaborationStart}
                     onCollaborationEnd={handleCollaborationEnd}
                 />
+                
+                {/* 全局Toast通知 */}
+                <ToastContainer />
             </Box>
         );
     }}</MediaQuery>);

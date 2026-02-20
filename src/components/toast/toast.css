@@ -1,0 +1,143 @@
+/* Toast根容器 */
+.toast-root {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+/* Toast容器 */
+.toast-container {
+    pointer-events: auto;
+    transform: translateX(120%);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.toast-container.toast-visible {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.toast-container.toast-exiting {
+    transform: translateX(120%);
+    opacity: 0;
+}
+
+/* Toast主体 */
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    min-width: 280px;
+    max-width: 400px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* 成功Toast */
+.toast-success {
+    background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+    color: white;
+    border: none;
+    box-shadow: 0 8px 30px rgba(76, 175, 80, 0.5);
+}
+
+.toast-success .toast-icon {
+    color: white;
+    font-size: 24px;
+}
+
+/* 错误Toast */
+.toast-error {
+    background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+    color: #c62828;
+    border: 1px solid #ef5350;
+}
+
+.toast-error .toast-icon {
+    color: #ef5350;
+}
+
+/* 警告Toast */
+.toast-warning {
+    background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%);
+    color: #f57c00;
+    border: 1px solid #ffb74d;
+}
+
+.toast-warning .toast-icon {
+    color: #ff9800;
+}
+
+/* 信息Toast */
+.toast-info {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    color: #1565c0;
+    border: 1px solid #42a5f5;
+}
+
+.toast-info .toast-icon {
+    color: #2196f3;
+}
+
+/* Toast图标 */
+.toast-icon {
+    font-size: 20px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+}
+
+/* Toast消息 */
+.toast-message {
+    flex: 1;
+    line-height: 1.4;
+}
+
+/* Toast关闭按钮 */
+.toast-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    opacity: 0.6;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.toast-close:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+    .toast-root {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+    }
+
+    .toast {
+        min-width: auto;
+        max-width: none;
+        width: 100%;
+    }
+}

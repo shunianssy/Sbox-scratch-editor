@@ -6,11 +6,11 @@
     position: fixed;
     top: 60px;
     right: 20px;
-    width: 250px;
+    width: 280px;
     background-color: white;
     border: 1px solid #ddd;
-    border-radius: 4px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     z-index: 1000;
     padding: 15px;
 }
@@ -21,6 +21,111 @@
     color: #333;
     border-bottom: 1px solid #eee;
     padding-bottom: 10px;
+}
+
+/* 等待登录状态样式 */
+.collaboration-waiting {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+}
+
+.collaboration-waiting h3 {
+    color: white;
+    border-bottom-color: rgba(255, 255, 255, 0.3);
+}
+
+.collaboration-invite-hint {
+    font-size: 16px;
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+.collaboration-login-hint {
+    font-size: 14px;
+    margin: 10px 0;
+    opacity: 0.9;
+}
+
+.collaboration-feasibility-hint {
+    font-size: 13px;
+    margin: 10px 0;
+    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.collaboration-info-icon {
+    font-size: 18px;
+}
+
+.collaboration-connecting {
+    font-size: 14px;
+    margin-top: 15px;
+    padding: 12px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: pulseConnect 1.5s ease-in-out infinite;
+}
+
+@keyframes pulseConnect {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.collaboration-spinner {
+    font-size: 20px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.collaboration-error-hint {
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    margin-top: 10px;
+}
+
+.collaboration-login-arrow {
+    background-color: rgba(255, 255, 255, 0.3);
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    text-align: center;
+    margin-top: 15px;
+    animation: pulseArrow 2s ease-in-out infinite;
+    cursor: pointer;
+}
+
+@keyframes pulseArrow {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 0.9;
+    }
+    50% {
+        transform: scale(1.05);
+        opacity: 1;
+    }
 }
 
 .collaboration-status {
