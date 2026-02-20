@@ -1,10 +1,13 @@
 .project-manager-modal {
     max-width: 600px;
     width: 90%;
+    max-height: 80vh;
 }
 
 .project-manager-content {
     padding: 20px;
+    max-height: calc(80vh - 60px);
+    overflow-y: auto;
 }
 
 .project-manager-content h2 {

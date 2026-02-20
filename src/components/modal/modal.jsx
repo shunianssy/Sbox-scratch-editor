@@ -15,7 +15,7 @@ import styles from './modal.css';
 
 const ModalComponent = props => (
     <ReactModal
-        isOpen
+        isOpen={props.isOpen !== false}
         className={classNames(styles.modalContent, props.className, {
             [styles.fullScreen]: props.fullScreen
         })}
@@ -106,6 +106,7 @@ ModalComponent.propTypes = {
     headerClassName: PropTypes.string,
     headerImage: PropTypes.string,
     isRtl: PropTypes.bool,
+    isOpen: PropTypes.bool,
     onHelp: PropTypes.func,
     onRequestClose: PropTypes.func
 };

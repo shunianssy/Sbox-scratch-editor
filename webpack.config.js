@@ -70,15 +70,14 @@ const base = {
             test: /\.jsx?$/,
             loader: 'babel-loader',
             exclude: [
-                /node_modules[\\/]scratch-blocks/,
-                /node_modules[\\/]scratch-render/,
-                /node_modules[\\/]scratch-vm/
+                /node_modules[\\/]scratch-render/
             ],
             options: {
                 // Explicitly disable babelrc so we don't catch various config
                 // in much lower dependencies.
                 babelrc: false,
                 plugins: [
+                    '@babel/plugin-proposal-nullish-coalescing-operator',
                     ['react-intl', {
                         messagesDir: './translations/messages/'
                     }]],
