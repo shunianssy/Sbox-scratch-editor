@@ -295,6 +295,25 @@
     cursor: not-allowed;
 }
 
+/* 有待合并远程修改时的同步按钮样式 */
+.syncButtonPending {
+    background-color: #ff9800 !important;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.syncButtonPending:hover {
+    background-color: #f57c00 !important;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(255, 152, 0, 0);
+    }
+}
+
 .syncIcon {
     font-size: 14px;
 }

@@ -1109,12 +1109,13 @@ class MenuBar extends React.Component {
                             </div>
                             {/* 同步按钮 */}
                             <button
-                                className={styles.syncButton}
+                                className={`${styles.syncButton} ${this.props.hasPendingRemoteChanges ? styles.syncButtonPending : ''}`}
                                 onClick={this.props.onSyncClick}
                                 disabled={this.props.syncStatus === 'syncing'}
-                                title="同步项目"
+                                title={this.props.hasPendingRemoteChanges ? '有新的远程修改待合并，点击同步' : '同步项目'}
                             >
-                                {this.props.syncStatus === 'syncing' ? '同步中...' : '同步'}
+                                {this.props.syncStatus === 'syncing' ? '同步中...' : 
+                                 this.props.hasPendingRemoteChanges ? '同步 (新)' : '同步'}
                             </button>
                         </React.Fragment>
                     )}
@@ -1196,6 +1197,7 @@ MenuBar.propTypes = {
     className: PropTypes.string,
     collaborationUserCount: PropTypes.number,
     syncStatus: PropTypes.string,
+    hasPendingRemoteChanges: PropTypes.bool,
     onSyncClick: PropTypes.func,
     errors: PropTypes.arrayOf(PropTypes.shape({
         sprite: PropTypes.string,

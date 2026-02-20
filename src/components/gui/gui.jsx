@@ -78,6 +78,7 @@ const GUIComponent = props => {
     const [isCollaborating, setIsCollaborating] = React.useState(false);
     const [collaborationUserCount, setCollaborationUserCount] = React.useState(0);
     const [syncStatus, setSyncStatus] = React.useState('idle');
+    const [hasPendingRemoteChanges, setHasPendingRemoteChanges] = React.useState(false);
     
     // 协作管理器引用
     const collaborationManagerRef = React.useRef(null);
@@ -193,6 +194,11 @@ const GUIComponent = props => {
     // 处理同步状态变化
     const handleSyncStatusChange = (status) => {
         setSyncStatus(status);
+    };
+    
+    // 处理待合并远程修改状态变化
+    const handlePendingRemoteChangesChange = (hasPending) => {
+        setHasPendingRemoteChanges(hasPending);
     };
     
     // 手动同步方法
@@ -345,6 +351,7 @@ const GUIComponent = props => {
                     className={styles.menuBarPosition}
                     collaborationUserCount={collaborationUserCount}
                     syncStatus={syncStatus}
+                    hasPendingRemoteChanges={hasPendingRemoteChanges}
                     onSyncClick={handleManualSync}
                     enableCommunity={enableCommunity}
                     isShared={isShared}
@@ -504,6 +511,7 @@ const GUIComponent = props => {
                     onCollaborationEnd={handleCollaborationEnd}
                     onUserCountChange={setCollaborationUserCount}
                     onSyncStatusChange={handleSyncStatusChange}
+                    onPendingRemoteChangesChange={handlePendingRemoteChangesChange}
                 />
                 
                 {/* 全局Toast通知 */}
