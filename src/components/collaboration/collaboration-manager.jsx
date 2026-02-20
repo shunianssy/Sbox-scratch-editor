@@ -37,13 +37,13 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
     const isCollaboratingRef = useRef(false);
     // 连接状态引用
     const connectionStatusRef = useRef('disconnected');
-    // 是否正在连接
-    const isConnectingRef = useRef(false);
     // 是否已经初始化
     const isInitializedRef = useRef(false);
     // 回调引用
     const onCollaborationStartRef = useRef(onCollaborationStart);
     const onCollaborationEndRef = useRef(onCollaborationEnd);
+    // 当前用户 ID
+    const currentUserIdRef = useRef(null);
 
     // 更新 VM 引用
     useEffect(() => {
@@ -77,6 +77,62 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
         } catch (err) {
             console.error('[协作] 获取项目 JSON 失败:', err);
             return null;
+        }
+    }, []);
+
+    // 获取工作区状态（滚动位置、缩放等）
+    const getWorkspaceState = useCallback(() => {
+        try {
+            // 尝试从 Blockly 获取工作区状态
+            if (window.Blockly && window.Blockly.getMainWorkspace) {
+                const workspace = window.Blockly.getMainWorkspace();
+                if (workspace) {
+                    return {
+                        scrollX: workspace.scrollX || 0,
+                        scrollY: workspace.scrollY || 0,
+                        scale: workspace.scale || 1
+                    };
+                }
+            }
+        } catch (err) {
+            console.warn('[协作] 获取工作区状态失败:', err);
+        }
+        return null;
+    }, []);
+
+    // 恢复工作区状态
+    const restoreWorkspaceState = useCallback((state) => {
+        if (!state) return;
+        
+        try {
+            // 延迟执行，等待 Blockly 工作区更新完成
+            setTimeout(() => {
+                if (window.Blockly && window.Blockly.getMainWorkspace) {
+                    const workspace = window.Blockly.getMainWorkspace();
+                    if (workspace) {
+                        // 恢复滚动位置
+                        if (state.scrollX !== undefined && state.scrollY !== undefined) {
+                            workspace.scrollX = state.scrollX;
+                            workspace.scrollY = state.scrollY;
+                        }
+                        // 恢复缩放级别
+                        if (state.scale !== undefined) {
+                            workspace.scale = state.scale;
+                        }
+                        // 触发重绘
+                        if (workspace.resize) {
+                            workspace.resize();
+                        }
+                        // 如果有 scrollbar，更新滚动条
+                        if (workspace.scrollbar) {
+                            workspace.scrollbar.resize();
+                        }
+                        console.log('[协作] 已恢复工作区状态');
+                    }
+                }
+            }, 50);
+        } catch (err) {
+            console.warn('[协作] 恢复工作区状态失败:', err);
         }
     }, []);
 
@@ -121,6 +177,32 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
         lastSyncedJSON.current = projectJSON;
         lastSyncTime.current = now;
         hasPendingChanges.current = false;
+    }, [getCurrentProjectJSON]);
+
+    // 发送当前项目给新用户
+    const sendProjectToNewUser = useCallback((newUserId) => {
+        if (!isCollaboratingRef.current) {
+            return;
+        }
+
+        const projectJSON = getCurrentProjectJSON();
+        if (!projectJSON) {
+            console.warn('[协作] 无法发送项目给新用户：项目 JSON 为空');
+            return;
+        }
+
+        console.log('[协作] 发送当前项目给新用户:', newUserId);
+        
+        // 发送项目状态给服务器，服务器会转发给新用户
+        collaborationAPI.send({
+            type: 'project_sync',
+            data: {
+                projectJSON: projectJSON,
+                targetId: vmRef.current && vmRef.current.editingTarget ? vmRef.current.editingTarget.id : null,
+                timestamp: Date.now(),
+                forUser: newUserId
+            }
+        });
     }, [getCurrentProjectJSON]);
 
     // 注册 VM 事件监听
@@ -246,6 +328,10 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
             return;
         }
 
+        // 保存当前工作区状态
+        const workspaceState = getWorkspaceState();
+        console.log('[协作] 保存工作区状态:', workspaceState);
+
         try {
             isApplyingRemoteChange.current = true;
             
@@ -256,6 +342,9 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
                     console.log('[协作] 远程项目更新已加载');
                     lastSyncedJSON.current = blockData.projectJSON;
                     lastSyncTime.current = Date.now();
+                    
+                    // 恢复工作区状态
+                    restoreWorkspaceState(workspaceState);
                 })
                 .catch(err => {
                     console.error('[协作] 加载远程项目失败:', err);
@@ -270,7 +359,62 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
             console.error('[协作] 处理积木变更失败:', error);
             isApplyingRemoteChange.current = false;
         }
-    }, []);
+    }, [getWorkspaceState, restoreWorkspaceState]);
+
+    // 处理项目同步（新用户加入时收到）
+    const handleProjectSync = useCallback((syncData) => {
+        console.log('[协作] 收到项目同步请求');
+        
+        // 检查是否是发给自己的
+        if (syncData.forUser && syncData.forUser !== currentUserIdRef.current) {
+            console.log('[协作] 忽略发给其他用户的项目同步');
+            return;
+        }
+
+        if (!syncData.projectJSON) {
+            console.warn('[协作] 项目同步数据中没有 projectJSON');
+            return;
+        }
+
+        const currentVm = vmRef.current;
+        if (!currentVm) {
+            console.warn('[协作] VM 未初始化');
+            return;
+        }
+
+        // 保存当前工作区状态
+        const workspaceState = getWorkspaceState();
+
+        try {
+            isApplyingRemoteChange.current = true;
+            
+            console.log('[协作] 正在加载同步的项目...');
+            
+            currentVm.loadProject(syncData.projectJSON)
+                .then(() => {
+                    console.log('[协作] 同步项目已加载');
+                    lastSyncedJSON.current = syncData.projectJSON;
+                    lastSyncTime.current = Date.now();
+                    
+                    // 恢复工作区状态
+                    restoreWorkspaceState(workspaceState);
+                    
+                    toastManager.success('已同步项目', 2000);
+                })
+                .catch(err => {
+                    console.error('[协作] 加载同步项目失败:', err);
+                })
+                .finally(() => {
+                    setTimeout(() => {
+                        isApplyingRemoteChange.current = false;
+                    }, 100);
+                });
+            
+        } catch (error) {
+            console.error('[协作] 处理项目同步失败:', error);
+            isApplyingRemoteChange.current = false;
+        }
+    }, [getWorkspaceState, restoreWorkspaceState]);
 
     // 处理协作消息
     const handleCollaborationMessage = useCallback((message) => {
@@ -280,10 +424,13 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
             case 'block_change':
                 handleBlockChange(message.data);
                 break;
+            case 'project_sync':
+                handleProjectSync(message.data);
+                break;
             default:
                 break;
         }
-    }, [handleBlockChange]);
+    }, [handleBlockChange, handleProjectSync]);
 
     // 初始化协作连接 - 只执行一次
     useEffect(() => {
@@ -359,12 +506,20 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
         // 注册用户加入回调
         collaborationAPI.on('userJoined', (userId) => {
             console.log('[协作] 用户加入:', userId);
+            
+            // 更新用户列表
             setConnectedUsers(prev => {
                 if (!prev.includes(userId)) {
                     return [...prev, userId];
                 }
                 return prev;
             });
+            
+            // 发送当前项目给新用户
+            // 延迟发送，确保新用户已经准备好接收
+            setTimeout(() => {
+                sendProjectToNewUser(userId);
+            }, 500);
         });
 
         // 注册用户离开回调
@@ -375,6 +530,10 @@ const CollaborationManager = ({ vm, onCollaborationStart, onCollaborationEnd }) 
 
         // 注册消息回调
         collaborationAPI.on('message', (message) => {
+            // 如果消息包含当前用户的 ID，保存它
+            if (message.user_id) {
+                currentUserIdRef.current = message.user_id;
+            }
             handleCollaborationMessage(message);
         });
 
