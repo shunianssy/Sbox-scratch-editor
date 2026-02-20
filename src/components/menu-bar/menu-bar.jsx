@@ -1100,12 +1100,23 @@ class MenuBar extends React.Component {
                         showSaveFilePicker={this.props.showSaveFilePicker}
                     />
                     
-                    {/* 协作用户数量指示器 */}
+                    {/* 协作用户数量指示器和同步按钮 */}
                     {this.props.collaborationUserCount > 0 && (
-                        <div className={styles.collaborationIndicator} title={`实时协作中，共 ${this.props.collaborationUserCount} 人在线`}>
-                            <span className={styles.collaborationIcon}>👥</span>
-                            <span className={styles.collaborationCount}>{this.props.collaborationUserCount}</span>
-                        </div>
+                        <React.Fragment>
+                            <div className={styles.collaborationIndicator} title={`协作中，共 ${this.props.collaborationUserCount} 人在线`}>
+                                <span className={styles.collaborationIcon}>协作</span>
+                                <span className={styles.collaborationCount}>{this.props.collaborationUserCount}</span>
+                            </div>
+                            {/* 同步按钮 */}
+                            <button
+                                className={styles.syncButton}
+                                onClick={this.props.onSyncClick}
+                                disabled={this.props.syncStatus === 'syncing'}
+                                title="同步项目"
+                            >
+                                {this.props.syncStatus === 'syncing' ? '同步中...' : '同步'}
+                            </button>
+                        </React.Fragment>
                     )}
                     
                     {/* 账号管理 */}
@@ -1184,6 +1195,8 @@ MenuBar.propTypes = {
     canShare: PropTypes.bool,
     className: PropTypes.string,
     collaborationUserCount: PropTypes.number,
+    syncStatus: PropTypes.string,
+    onSyncClick: PropTypes.func,
     errors: PropTypes.arrayOf(PropTypes.shape({
         sprite: PropTypes.string,
         error: PropTypes.string,
@@ -1214,11 +1227,11 @@ MenuBar.propTypes = {
     modeMenuOpen: PropTypes.bool,
     modeNow: PropTypes.bool,
     onClickAbout: PropTypes.oneOfType([
-        PropTypes.func, // button mode: call this callback when the About button is clicked
-        PropTypes.arrayOf( // menu mode: list of items in the About menu
+        PropTypes.func,
+        PropTypes.arrayOf(
             PropTypes.shape({
-                title: PropTypes.string, // text for the menu item
-                onClick: PropTypes.func // call this callback when the menu item is clicked
+                title: PropTypes.string,
+                onClick: PropTypes.func
             })
         )
     ]),

@@ -1,6 +1,14 @@
-// 协作API服务
+// 协作API服务 - 手动同步模式
 const WS_BASE_URL = 'ws://localhost:8765';
 
+/**
+ * 协作API类
+ * 
+ * 新的同步机制（类似Git）：
+ * 1. 本地操作只记录，不实时发送
+ * 2. 用户点击"同步"按钮时，上传本地修改并拉取他人修改
+ * 3. 新用户加入时，从服务器获取项目快照
+ */
 class CollaborationAPI {
     constructor() {
         this.socket = null;
@@ -38,7 +46,7 @@ class CollaborationAPI {
                 this.socket = new WebSocket(`${WS_BASE_URL}/${projectToken}`);
                 
                 this.socket.onopen = () => {
-                    console.log('WebSocket连接已打开');
+                    console.log('[协作API] WebSocket连接已打开');
                     // 发送认证信息
                     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
                         this.socket.send(JSON.stringify({
@@ -49,7 +57,7 @@ class CollaborationAPI {
                         this.callbacks.connect.forEach(callback => callback());
                         resolve();
                     } else {
-                        console.error('WebSocket连接状态异常:', this.socket ? this.socket.readyState : 'null');
+                        console.error('[协作API] WebSocket连接状态异常:', this.socket ? this.socket.readyState : 'null');
                         reject(new Error('WebSocket连接状态异常'));
                     }
                 };
@@ -57,10 +65,8 @@ class CollaborationAPI {
                 this.socket.onmessage = (event) => {
                     try {
                         const message = JSON.parse(event.data);
-                        // 只在控制台显示关键消息
-                        if (message.type === 'user_joined' || message.type === 'user_left') {
-                            console.log('收到WebSocket消息:', message);
-                        }
+                        // 显示所有消息类型
+                        console.log('[协作API] 收到消息:', message.type, message);
                         
                         // 处理特定类型的消息
                         switch (message.type) {
@@ -75,22 +81,22 @@ class CollaborationAPI {
                                 this.callbacks.message.forEach(callback => callback(message));
                         }
                     } catch (error) {
-                        console.error('解析WebSocket消息错误:', error);
+                        console.error('[协作API] 解析WebSocket消息错误:', error);
                     }
                 };
                 
                 this.socket.onclose = () => {
-                    console.log('WebSocket连接已关闭');
+                    console.log('[协作API] WebSocket连接已关闭');
                     this.callbacks.disconnect.forEach(callback => callback());
                 };
                 
                 this.socket.onerror = (error) => {
-                    console.error('WebSocket错误:', error);
+                    console.error('[协作API] WebSocket错误:', error);
                     this.callbacks.error.forEach(callback => callback(error));
                     reject(error);
                 };
             } catch (error) {
-                console.error('WebSocket连接错误:', error);
+                console.error('[协作API] WebSocket连接错误:', error);
                 reject(error);
             }
         });
@@ -104,7 +110,7 @@ class CollaborationAPI {
             try {
                 this.socket.close();
             } catch (e) {
-                console.error('关闭连接失败:', e);
+                console.error('[协作API] 关闭连接失败:', e);
             }
             this.socket = null;
         }
@@ -118,44 +124,63 @@ class CollaborationAPI {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             try {
                 this.socket.send(JSON.stringify(message));
+                console.log('[协作API] 发送消息:', message.type);
             } catch (error) {
-                console.error('发送WebSocket消息错误:', error);
+                console.error('[协作API] 发送WebSocket消息错误:', error);
             }
         } else {
-            console.error('WebSocket未连接，无法发送消息');
+            console.error('[协作API] WebSocket未连接，无法发送消息');
         }
     }
     
     /**
-     * 发送积木变更消息
-     * @param {Object} blockData - 积木数据
+     * 发送手动同步请求
+     * 上传本地修改并拉取服务器上的最新版本
+     * @param {Object} projectJSON - 项目JSON数据
+     * @param {string} targetId - 当前编辑目标ID
+     * @param {string} userId - 用户ID
      */
-    sendBlockChange(blockData) {
+    sendManualSync(projectJSON, targetId, userId) {
         this.send({
-            type: 'block_change',
-            data: blockData
+            type: 'manual_sync',
+            data: {
+                projectJSON: projectJSON,
+                targetId: targetId,
+                timestamp: Date.now(),
+                userId: userId
+            }
         });
     }
     
     /**
-     * 发送舞台变更消息
-     * @param {Object} stageData - 舞台数据
+     * 请求项目快照（新用户加入时）
+     * @param {string} userId - 用户ID
      */
-    sendStageChange(stageData) {
+    requestSnapshot(userId) {
         this.send({
-            type: 'stage_change',
-            data: stageData
+            type: 'request_snapshot',
+            data: {
+                userId: userId,
+                timestamp: Date.now()
+            }
         });
     }
     
     /**
-     * 发送精灵变更消息
-     * @param {Object} spriteData - 精灵数据
+     * 发送项目同步给指定用户
+     * @param {Object} projectJSON - 项目JSON数据
+     * @param {string} targetId - 当前编辑目标ID
+     * @param {string} forUser - 目标用户ID
      */
-    sendSpriteChange(spriteData) {
+    sendProjectSync(projectJSON, targetId, forUser) {
         this.send({
-            type: 'sprite_change',
-            data: spriteData
+            type: 'project_sync',
+            data: {
+                projectJSON: projectJSON,
+                targetId: targetId,
+                timestamp: Date.now(),
+                forUser: forUser
+            }
         });
     }
     

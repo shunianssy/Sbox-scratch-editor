@@ -77,6 +77,10 @@ const fullscreenBackgroundColor = getFullscreenBackgroundColor();
 const GUIComponent = props => {
     const [isCollaborating, setIsCollaborating] = React.useState(false);
     const [collaborationUserCount, setCollaborationUserCount] = React.useState(0);
+    const [syncStatus, setSyncStatus] = React.useState('idle');
+    
+    // 协作管理器引用
+    const collaborationManagerRef = React.useRef(null);
     
     const {
         accountNavOpen,
@@ -184,6 +188,18 @@ const GUIComponent = props => {
         // 启用整理积木功能
         const { setCollaborationMode } = require('../../lib/collaboration-manager');
         setCollaborationMode(false);
+    };
+    
+    // 处理同步状态变化
+    const handleSyncStatusChange = (status) => {
+        setSyncStatus(status);
+    };
+    
+    // 手动同步方法
+    const handleManualSync = () => {
+        if (collaborationManagerRef.current) {
+            collaborationManagerRef.current.sync();
+        }
     };
     
     if (children) {
@@ -328,6 +344,8 @@ const GUIComponent = props => {
                     canShare={canShare}
                     className={styles.menuBarPosition}
                     collaborationUserCount={collaborationUserCount}
+                    syncStatus={syncStatus}
+                    onSyncClick={handleManualSync}
                     enableCommunity={enableCommunity}
                     isShared={isShared}
                     isTotallyNormal={isTotallyNormal}
@@ -480,10 +498,12 @@ const GUIComponent = props => {
                 
                 {/* 协作管理 */}
                 <CollaborationManager
+                    ref={collaborationManagerRef}
                     vm={vm}
                     onCollaborationStart={handleCollaborationStart}
                     onCollaborationEnd={handleCollaborationEnd}
                     onUserCountChange={setCollaborationUserCount}
+                    onSyncStatusChange={handleSyncStatusChange}
                 />
                 
                 {/* 全局Toast通知 */}
