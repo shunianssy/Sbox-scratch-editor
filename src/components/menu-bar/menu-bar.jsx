@@ -1161,6 +1161,12 @@ class MenuBar extends React.Component {
                     isOpen={this.state.isProjectManagerOpen}
                     onRequestClose={() => this.setState({ isProjectManagerOpen: false })}
                     authToken={this.state.authToken}
+                    onRequireLogin={() => this.setState({ 
+                        isProjectManagerOpen: false, 
+                        isAuthModalOpen: true,
+                        isAuthenticated: false,
+                        authToken: null 
+                    })}
                 />
 
                 {aboutButton}

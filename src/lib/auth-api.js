@@ -72,7 +72,13 @@ class AuthAPI {
             });
             
             if (!response.ok) {
-                throw new Error('获取项目列表失败');
+                const errorData = await response.json();
+                // 如果token无效，清除本地存储
+                if (errorData.code === 'INVALID_TOKEN' || errorData.code === 'TOKEN_EXPIRED') {
+                    this.clearAuth();
+                    throw new Error('登录已过期，请重新登录');
+                }
+                throw new Error(errorData.error || '获取项目列表失败');
             }
             
             return await response.json();
@@ -100,7 +106,13 @@ class AuthAPI {
             });
             
             if (!response.ok) {
-                throw new Error('创建项目失败');
+                const errorData = await response.json();
+                // 如果token无效，清除本地存储
+                if (errorData.code === 'INVALID_TOKEN' || errorData.code === 'TOKEN_EXPIRED') {
+                    this.clearAuth();
+                    throw new Error('登录已过期，请重新登录');
+                }
+                throw new Error(errorData.error || '创建项目失败');
             }
             
             return await response.json();

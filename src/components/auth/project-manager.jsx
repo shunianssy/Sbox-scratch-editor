@@ -4,7 +4,7 @@ import Modal from '../modal/modal.jsx';
 import Button from '../button/button.jsx';
 import './project-manager.css';
 
-const ProjectManager = ({ isOpen, onRequestClose, authToken }) => {
+const ProjectManager = ({ isOpen, onRequestClose, authToken, onRequireLogin }) => {
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -22,6 +22,15 @@ const ProjectManager = ({ isOpen, onRequestClose, authToken }) => {
             setProjects(projectList);
         } catch (err) {
             setError(err.message || '获取项目列表失败');
+            // 如果需要重新登录，通知父组件
+            if (err.message && err.message.includes('重新登录')) {
+                if (onRequireLogin) {
+                    setTimeout(() => {
+                        onRequestClose();
+                        onRequireLogin();
+                    }, 1500);
+                }
+            }
         } finally {
             setLoading(false);
         }
@@ -44,6 +53,15 @@ const ProjectManager = ({ isOpen, onRequestClose, authToken }) => {
             setNewProjectName('');
         } catch (err) {
             setError(err.message || '创建项目失败');
+            // 如果需要重新登录，通知父组件
+            if (err.message && err.message.includes('重新登录')) {
+                if (onRequireLogin) {
+                    setTimeout(() => {
+                        onRequestClose();
+                        onRequireLogin();
+                    }, 1500);
+                }
+            }
         } finally {
             setCreatingProject(false);
         }
@@ -152,7 +170,13 @@ const ProjectManager = ({ isOpen, onRequestClose, authToken }) => {
 ProjectManager.propTypes = {
     isOpen: PropTypes.bool.isRequired,
     onRequestClose: PropTypes.func.isRequired,
-    authToken: PropTypes.string.isRequired
+    authToken: PropTypes.string,
+    onRequireLogin: PropTypes.func
+};
+
+ProjectManager.defaultProps = {
+    authToken: null,
+    onRequireLogin: null
 };
 
 export default ProjectManager;

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import Modal from '../modal/modal.jsx';
-import Button from '../button/button.jsx';
 import { toastManager } from '../toast/toast.jsx';
 import './auth-modal.css';
 
@@ -139,14 +138,14 @@ const AuthModal = ({ isOpen, onRequestClose, onAuthSuccess }) => {
                         />
                     </div>
                     
-                    <Button
-                        className="auth-submit-button"
+                    {/* 使用原生 button 元素确保表单提交功能正常工作 */}
+                    <button
                         type="submit"
-                        variant="primary"
+                        className="auth-submit-button-native"
                         disabled={loading}
                     >
                         {loading ? '处理中...' : activeTab === 'login' ? '登录' : '注册'}
-                    </Button>
+                    </button>
                 </form>
                 
                 {activeTab === 'register' && (
