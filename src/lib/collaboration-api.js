@@ -1,12 +1,12 @@
-// 协作API服务 - 手动同步模式
+// 协作API服务 - 实时后台同步模式
 const WS_BASE_URL = 'ws://localhost:8765';
 
 /**
  * 协作API类
  * 
- * 新的同步机制（类似Git）：
- * 1. 本地操作只记录，不实时发送
- * 2. 用户点击"同步"按钮时，上传本地修改并拉取他人修改
+ * 当前同步机制：
+ * 1. 前端在本地变更后自动触发后台同步（节流/去抖）
+ * 2. 远程变更自动合并，尽量不打断编辑体验
  * 3. 新用户加入时，从服务器获取项目快照
  */
 class CollaborationAPI {
@@ -21,6 +21,10 @@ class CollaborationAPI {
             userJoined: [],
             userLeft: []
         };
+        // 递增连接ID，用于忽略过期连接事件
+        this.connectionId = 0;
+        // 标记是否为主动关闭（避免误触发断开提示）
+        this.isIntentionalClose = false;
     }
     
     /**
@@ -32,10 +36,19 @@ class CollaborationAPI {
     connect(projectToken, authToken) {
         return new Promise((resolve, reject) => {
             try {
-                // 清理之前的连接
+                let settled = false;
+                const currentConnectionId = ++this.connectionId;
+                this.isIntentionalClose = false;
+
+                // 清理之前的连接：移除旧监听，避免旧连接 onclose 误触发当前回调
                 if (this.socket) {
+                    const oldSocket = this.socket;
                     try {
-                        this.socket.close();
+                        oldSocket.onopen = null;
+                        oldSocket.onmessage = null;
+                        oldSocket.onerror = null;
+                        oldSocket.onclose = null;
+                        oldSocket.close();
                     } catch (e) {
                         console.error('关闭旧连接失败:', e);
                     }
@@ -43,9 +56,13 @@ class CollaborationAPI {
                 }
                 
                 this.projectToken = projectToken;
-                this.socket = new WebSocket(`${WS_BASE_URL}/${projectToken}`);
+                const socket = new WebSocket(`${WS_BASE_URL}/${projectToken}`);
+                this.socket = socket;
                 
-                this.socket.onopen = () => {
+                socket.onopen = () => {
+                    // 忽略过期连接事件
+                    if (currentConnectionId !== this.connectionId || socket !== this.socket) return;
+
                     console.log('[协作API] WebSocket连接已打开');
                     // 发送认证信息
                     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
@@ -55,14 +72,23 @@ class CollaborationAPI {
                         }));
                         // 通知回调
                         this.callbacks.connect.forEach(callback => callback());
-                        resolve();
+                        if (!settled) {
+                            settled = true;
+                            resolve();
+                        }
                     } else {
                         console.error('[协作API] WebSocket连接状态异常:', this.socket ? this.socket.readyState : 'null');
-                        reject(new Error('WebSocket连接状态异常'));
+                        if (!settled) {
+                            settled = true;
+                            reject(new Error('WebSocket连接状态异常'));
+                        }
                     }
                 };
                 
-                this.socket.onmessage = (event) => {
+                socket.onmessage = (event) => {
+                    // 忽略过期连接事件
+                    if (currentConnectionId !== this.connectionId || socket !== this.socket) return;
+
                     try {
                         const message = JSON.parse(event.data);
                         // 显示所有消息类型
@@ -85,15 +111,31 @@ class CollaborationAPI {
                     }
                 };
                 
-                this.socket.onclose = () => {
-                    console.log('[协作API] WebSocket连接已关闭');
-                    this.callbacks.disconnect.forEach(callback => callback());
+                socket.onclose = (event) => {
+                    // 忽略过期连接事件
+                    if (currentConnectionId !== this.connectionId || socket !== this.socket) return;
+
+                    const isIntentional = this.isIntentionalClose;
+                    console.log(`[协作API] WebSocket连接已关闭 (code=${event.code}, reason=${event.reason || 'none'}, intentional=${isIntentional})`);
+
+                    this.socket = null;
+
+                    // 主动关闭时不触发断开回调，避免误提示
+                    if (!isIntentional) {
+                        this.callbacks.disconnect.forEach(callback => callback());
+                    }
                 };
                 
-                this.socket.onerror = (error) => {
+                socket.onerror = (error) => {
+                    // 忽略过期连接事件
+                    if (currentConnectionId !== this.connectionId || socket !== this.socket) return;
+
                     console.error('[协作API] WebSocket错误:', error);
                     this.callbacks.error.forEach(callback => callback(error));
-                    reject(error);
+                    if (!settled) {
+                        settled = true;
+                        reject(error);
+                    }
                 };
             } catch (error) {
                 console.error('[协作API] WebSocket连接错误:', error);
@@ -107,12 +149,14 @@ class CollaborationAPI {
      */
     disconnect() {
         if (this.socket) {
+            const socket = this.socket;
+            this.isIntentionalClose = true;
+            this.socket = null;
             try {
-                this.socket.close();
+                socket.close();
             } catch (e) {
                 console.error('[协作API] 关闭连接失败:', e);
             }
-            this.socket = null;
         }
     }
     

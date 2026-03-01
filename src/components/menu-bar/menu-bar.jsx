@@ -1100,23 +1100,19 @@ class MenuBar extends React.Component {
                         showSaveFilePicker={this.props.showSaveFilePicker}
                     />
                     
-                    {/* 协作用户数量指示器和同步按钮 */}
+                    {/* 协作用户数量指示器和实时同步状态 */}
                     {this.props.collaborationUserCount > 0 && (
                         <React.Fragment>
                             <div className={styles.collaborationIndicator} title={`协作中，共 ${this.props.collaborationUserCount} 人在线`}>
                                 <span className={styles.collaborationIcon}>协作</span>
                                 <span className={styles.collaborationCount}>{this.props.collaborationUserCount}</span>
                             </div>
-                            {/* 同步按钮 */}
-                            <button
-                                className={`${styles.syncButton} ${this.props.hasPendingRemoteChanges ? styles.syncButtonPending : ''}`}
-                                onClick={this.props.onSyncClick}
-                                disabled={this.props.syncStatus === 'syncing'}
-                                title={this.props.hasPendingRemoteChanges ? '有新的远程修改待合并，点击同步' : '同步项目'}
+                            <div
+                                className={styles.syncButton}
+                                title={this.props.syncStatus === 'syncing' ? '实时同步中' : '实时同步已开启'}
                             >
-                                {this.props.syncStatus === 'syncing' ? '同步中...' : 
-                                 this.props.hasPendingRemoteChanges ? '同步 (新)' : '同步'}
-                            </button>
+                                {this.props.syncStatus === 'syncing' ? '实时同步中...' : '实时同步'}
+                            </div>
                         </React.Fragment>
                     )}
                     
@@ -1203,8 +1199,6 @@ MenuBar.propTypes = {
     className: PropTypes.string,
     collaborationUserCount: PropTypes.number,
     syncStatus: PropTypes.string,
-    hasPendingRemoteChanges: PropTypes.bool,
-    onSyncClick: PropTypes.func,
     errors: PropTypes.arrayOf(PropTypes.shape({
         sprite: PropTypes.string,
         error: PropTypes.string,

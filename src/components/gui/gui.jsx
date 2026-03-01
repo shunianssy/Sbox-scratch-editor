@@ -78,10 +78,6 @@ const GUIComponent = props => {
     const [isCollaborating, setIsCollaborating] = React.useState(false);
     const [collaborationUserCount, setCollaborationUserCount] = React.useState(0);
     const [syncStatus, setSyncStatus] = React.useState('idle');
-    const [hasPendingRemoteChanges, setHasPendingRemoteChanges] = React.useState(false);
-    
-    // 协作管理器引用
-    const collaborationManagerRef = React.useRef(null);
     
     const {
         accountNavOpen,
@@ -196,17 +192,6 @@ const GUIComponent = props => {
         setSyncStatus(status);
     };
     
-    // 处理待合并远程修改状态变化
-    const handlePendingRemoteChangesChange = (hasPending) => {
-        setHasPendingRemoteChanges(hasPending);
-    };
-    
-    // 手动同步方法
-    const handleManualSync = () => {
-        if (collaborationManagerRef.current) {
-            collaborationManagerRef.current.sync();
-        }
-    };
     
     if (children) {
         return <Box {...componentProps}>{children}</Box>;
@@ -351,8 +336,6 @@ const GUIComponent = props => {
                     className={styles.menuBarPosition}
                     collaborationUserCount={collaborationUserCount}
                     syncStatus={syncStatus}
-                    hasPendingRemoteChanges={hasPendingRemoteChanges}
-                    onSyncClick={handleManualSync}
                     enableCommunity={enableCommunity}
                     isShared={isShared}
                     isTotallyNormal={isTotallyNormal}
@@ -505,13 +488,11 @@ const GUIComponent = props => {
                 
                 {/* 协作管理 */}
                 <CollaborationManager
-                    ref={collaborationManagerRef}
                     vm={vm}
                     onCollaborationStart={handleCollaborationStart}
                     onCollaborationEnd={handleCollaborationEnd}
                     onUserCountChange={setCollaborationUserCount}
                     onSyncStatusChange={handleSyncStatusChange}
-                    onPendingRemoteChangesChange={handlePendingRemoteChangesChange}
                 />
                 
                 {/* 全局Toast通知 */}

@@ -11,13 +11,17 @@ import './collaboration-manager.css';
 const WORKSPACE_RESTORE_DELAY = 100;
 // 拖拽检测延迟（毫秒）
 const DRAG_CHECK_DELAY = 50;
+// 本地自动同步防抖（毫秒）
+const AUTO_SYNC_DEBOUNCE = 500;
+// 远程变更合并防抖（毫秒）
+const REMOTE_MERGE_DEBOUNCE = 300;
 
 /**
  * 协作管理器组件
  * 
- * 新的同步机制（类似Git）：
- * 1. 本地操作只记录，不实时发送
- * 2. 用户点击"同步"按钮时，上传本地修改并拉取他人修改
+ * 实时后台同步机制：
+ * 1. 本地操作变更后自动防抖同步（无需手动点击）
+ * 2. 远程变更自动增量合并，尽量不打断编辑体验
  * 3. 新用户加入时，从服务器获取项目快照
  */
 const CollaborationManager = forwardRef(({ vm, onCollaborationStart, onCollaborationEnd, onUserCountChange, onSyncStatusChange, onPendingRemoteChangesChange }, ref) => {
@@ -59,11 +63,15 @@ const CollaborationManager = forwardRef(({ vm, onCollaborationStart, onCollabora
     const pendingRemoteChanges = useRef([]);
     // 是否有待合并的远程修改
     const [hasPendingRemoteChanges, setHasPendingRemoteChanges] = useState(false);
+    // 自动同步定时器
+    const autoSyncTimerRef = useRef(null);
+    // 远程合并定时器
+    const remoteMergeTimerRef = useRef(null);
 
     // 暴露方法给父组件调用
     useImperativeHandle(ref, () => ({
-        // 手动同步方法
-        sync: () => handleManualSync(),
+        // 保留兼容入口：触发一次立即后台同步
+        sync: () => handleBackgroundSync(false, 'manual-trigger'),
         // 检查是否有本地变更
         hasLocalChanges: () => hasLocalChanges,
         // 获取同步状态
@@ -484,84 +492,6 @@ const CollaborationManager = forwardRef(({ vm, onCollaborationStart, onCollabora
         }
     }, []);
 
-    // 检测本地变更（只记录，不发送）
-    const detectLocalChange = useCallback(() => {
-        if (isApplyingRemoteChange.current) {
-            return;
-        }
-        
-        const projectJSON = getCurrentProjectJSON();
-        if (!projectJSON) return;
-        
-        // 检查是否有实际变更
-        if (lastSyncedJSON.current !== projectJSON) {
-            localChangesCount.current++;
-            setHasLocalChanges(true);
-            console.log('[协作] 检测到本地变更，变更计数:', localChangesCount.current);
-        }
-    }, [getCurrentProjectJSON]);
-
-    // 注册 VM 事件监听（只记录变更，不发送）
-    const registerVMListeners = useCallback(() => {
-        const currentVm = vmRef.current;
-        if (!currentVm) {
-            console.warn('[协作] VM 未初始化，无法注册事件监听');
-            return;
-        }
-
-        console.log('[协作] 正在注册 VM 事件监听（手动同步模式）...');
-
-        // 监听 workspaceUpdate 事件
-        const workspaceUpdateHandler = () => {
-            if (isApplyingRemoteChange.current) return;
-            detectLocalChange();
-        };
-
-        // 监听 PROJECT_CHANGED 事件
-        const projectChangedHandler = () => {
-            if (isApplyingRemoteChange.current) return;
-            detectLocalChange();
-        };
-
-        // 监听 targetsUpdate 事件
-        const targetsUpdateHandler = () => {
-            if (isApplyingRemoteChange.current) return;
-            detectLocalChange();
-        };
-
-        vmHandlersRef.current = {
-            workspaceUpdate: workspaceUpdateHandler,
-            projectChanged: projectChangedHandler,
-            targetsUpdate: targetsUpdateHandler
-        };
-
-        currentVm.on('workspaceUpdate', workspaceUpdateHandler);
-        currentVm.on('PROJECT_CHANGED', projectChangedHandler);
-        currentVm.on('targetsUpdate', targetsUpdateHandler);
-
-        console.log('[协作] 已注册 VM 事件监听（手动同步模式）');
-    }, [detectLocalChange]);
-
-    // 移除 VM 事件监听
-    const unregisterVMListeners = useCallback(() => {
-        const currentVm = vmRef.current;
-        if (!currentVm) return;
-
-        const handlers = vmHandlersRef.current;
-        if (handlers.workspaceUpdate) {
-            currentVm.off('workspaceUpdate', handlers.workspaceUpdate);
-        }
-        if (handlers.projectChanged) {
-            currentVm.off('PROJECT_CHANGED', handlers.projectChanged);
-        }
-        if (handlers.targetsUpdate) {
-            currentVm.off('targetsUpdate', handlers.targetsUpdate);
-        }
-
-        vmHandlersRef.current = {};
-        console.log('[协作] 已移除 VM 事件监听');
-    }, []);
-
     /**
      * 增量应用远程修改（核心方法）
      * 不重新加载整个项目，只更新变化的部分
@@ -613,80 +543,83 @@ const CollaborationManager = forwardRef(({ vm, onCollaborationStart, onCollabora
         }
     }, [getCurrentProjectJSON, getWorkspaceState, restoreWorkspaceState]);
 
-    // 手动同步方法（核心功能）
-    // 流程：上传本地修改 -> 增量应用远程修改（不重新加载整个项目）
-    const handleManualSync = useCallback(async () => {
+    const clearAutoSyncTimer = useCallback(() => {
+        if (autoSyncTimerRef.current) {
+            clearTimeout(autoSyncTimerRef.current);
+            autoSyncTimerRef.current = null;
+        }
+    }, []);
+
+    const clearRemoteMergeTimer = useCallback(() => {
+        if (remoteMergeTimerRef.current) {
+            clearTimeout(remoteMergeTimerRef.current);
+            remoteMergeTimerRef.current = null;
+        }
+    }, []);
+
+    const handleBackgroundSync = useCallback(async (silent = true, source = 'auto') => {
         if (!isCollaboratingRef.current) {
-            toastManager.warning('未连接到协作服务器', 2000);
             return;
         }
 
         if (syncStatus === 'syncing') {
-            toastManager.info('正在同步中，请稍候...', 2000);
             return;
         }
 
-        // 检查是否有积木正在被拖拽
+        // 拖拽期间不打断，稍后重试
         if (checkDraggingState()) {
-            toastManager.warning('请先完成当前操作再同步', 2000);
+            await waitForDragEnd();
+        }
+
+        const currentVm = vmRef.current;
+        const projectJSON = getCurrentProjectJSON();
+        if (!currentVm || !projectJSON) {
+            return;
+        }
+
+        const hasPending = pendingRemoteChanges.current.length > 0;
+        const hasLocal = Boolean(
+            hasLocalChanges ||
+            localChangesCount.current > 0 ||
+            (lastSyncedJSON.current && lastSyncedJSON.current !== projectJSON)
+        );
+
+        if (!hasPending && !hasLocal) {
             return;
         }
 
         setSyncStatus('syncing');
-        console.log('[协作] 开始手动同步...');
+        console.log(`[协作] 后台同步开始，来源: ${source}, local=${hasLocal}, remote=${hasPending}`);
 
         try {
-            const currentVm = vmRef.current;
-            const projectJSON = getCurrentProjectJSON();
-            if (!projectJSON) {
-                throw new Error('无法获取项目数据');
+            // 上传本地修改
+            if (hasLocal) {
+                collaborationAPI.send({
+                    type: 'manual_sync',
+                    data: {
+                        projectJSON: projectJSON,
+                        targetId: currentVm && currentVm.editingTarget ? currentVm.editingTarget.id : null,
+                        timestamp: Date.now(),
+                        userId: currentUserIdRef.current
+                    }
+                });
             }
 
-            // 步骤1：发送本地修改到服务器（上传自己的修改）
-            collaborationAPI.send({
-                type: 'manual_sync',
-                data: {
-                    projectJSON: projectJSON,
-                    targetId: currentVm && currentVm.editingTarget ? currentVm.editingTarget.id : null,
-                    timestamp: Date.now(),
-                    userId: currentUserIdRef.current
-                }
-            });
-            console.log('[协作] 已上传本地修改');
-
-            // 步骤2：增量应用缓存的远程修改（核心改进）
+            // 自动合并远程修改
             const pendingChanges = pendingRemoteChanges.current;
-
             if (pendingChanges.length > 0) {
-                console.log('[协作] 开始增量应用缓存的远程修改，数量:', pendingChanges.length);
-
-                // 合并所有远程修改为一个项目 JSON
                 let mergedRemoteJSON = projectJSON;
                 for (const remoteChange of pendingChanges) {
                     mergedRemoteJSON = mergeProjectJSON(mergedRemoteJSON, remoteChange.projectJSON);
                 }
 
-                // 尝试增量同步
                 isApplyingRemoteChange.current = true;
-                
                 try {
                     const result = await applyRemoteChangesIncrementally(mergedRemoteJSON);
-
-                    if (result.success) {
-                        console.log(`[协作] 增量同步成功，变更数量: ${result.changes}`);
-                        toastManager.success(`同步成功！已增量更新 ${result.changes} 处变更`, 2000);
-                    } else if (result.needFullLoad) {
-                        // 增量同步失败，回退到完整加载
-                        console.log('[协作] 增量同步失败，回退到完整加载');
-                        
+                    if (result.needFullLoad) {
                         const workspaceState = getWorkspaceState();
-                        
                         await currentVm.loadProject(mergedRemoteJSON);
-                        
-                        console.log('[协作] 完整加载成功');
                         restoreWorkspaceState(workspaceState);
-                        
-                        toastManager.success('同步成功！（完整加载）', 2000);
                     }
                 } finally {
                     setTimeout(() => {
@@ -694,31 +627,141 @@ const CollaborationManager = forwardRef(({ vm, onCollaborationStart, onCollabora
                     }, WORKSPACE_RESTORE_DELAY);
                 }
 
-                // 清空缓存
                 pendingRemoteChanges.current = [];
                 setHasPendingRemoteChanges(false);
-                console.log('[协作] 已清空远程修改缓存');
-            } else {
-                console.log('[协作] 没有待合并的远程修改');
-                toastManager.success('同步成功！本地修改已上传', 2000);
             }
 
-            // 更新同步状态
             lastSyncedJSON.current = getCurrentProjectJSON();
             localChangesCount.current = 0;
             setHasLocalChanges(false);
             setSyncStatus('synced');
 
-            console.log('[协作] 同步完成');
-
+            if (!silent) {
+                toastManager.success('同步成功', 1500);
+            }
         } catch (error) {
-            console.error('[协作] 同步失败:', error);
+            console.error('[协作] 后台同步失败:', error);
             setSyncStatus('error');
-            toastManager.error(`同步失败: ${error.message}`, 3000);
+            if (!silent) {
+                toastManager.error(`同步失败: ${error.message}`, 2500);
+            }
         }
-    }, [syncStatus, checkDraggingState, getCurrentProjectJSON, mergeProjectJSON, getWorkspaceState, restoreWorkspaceState, applyRemoteChangesIncrementally]);
+    }, [
+        syncStatus,
+        hasLocalChanges,
+        checkDraggingState,
+        waitForDragEnd,
+        getCurrentProjectJSON,
+        mergeProjectJSON,
+        applyRemoteChangesIncrementally,
+        getWorkspaceState,
+        restoreWorkspaceState
+    ]);
 
-    // 处理同步响应（缓存远程修改，不自动加载）
+    const scheduleAutoSync = useCallback((reason = 'local-change') => {
+        if (!isCollaboratingRef.current) return;
+
+        clearAutoSyncTimer();
+        autoSyncTimerRef.current = setTimeout(() => {
+            autoSyncTimerRef.current = null;
+            handleBackgroundSync(true, reason);
+        }, AUTO_SYNC_DEBOUNCE);
+    }, [clearAutoSyncTimer, handleBackgroundSync]);
+
+    const scheduleRemoteMerge = useCallback(() => {
+        if (!isCollaboratingRef.current) return;
+
+        clearRemoteMergeTimer();
+        remoteMergeTimerRef.current = setTimeout(() => {
+            remoteMergeTimerRef.current = null;
+            handleBackgroundSync(true, 'remote-change');
+        }, REMOTE_MERGE_DEBOUNCE);
+    }, [clearRemoteMergeTimer, handleBackgroundSync]);
+
+    // 检测本地变更并自动同步
+    const detectLocalChange = useCallback(() => {
+        if (isApplyingRemoteChange.current) {
+            return;
+        }
+
+        const projectJSON = getCurrentProjectJSON();
+        if (!projectJSON) return;
+
+        if (lastSyncedJSON.current !== projectJSON) {
+            localChangesCount.current++;
+            setHasLocalChanges(true);
+            scheduleAutoSync('local-change');
+            console.log('[协作] 检测到本地变更，变更计数:', localChangesCount.current);
+        }
+    }, [getCurrentProjectJSON, scheduleAutoSync]);
+
+    // 注册 VM 事件监听（只记录变更，不发送）
+    const registerVMListeners = useCallback(() => {
+        const currentVm = vmRef.current;
+        if (!currentVm) {
+            console.warn('[协作] VM 未初始化，无法注册事件监听');
+            return;
+        }
+
+        console.log('[协作] 正在注册 VM 事件监听（实时后台同步模式）...');
+
+        // 监听 workspaceUpdate 事件
+        const workspaceUpdateHandler = () => {
+            if (isApplyingRemoteChange.current) return;
+            detectLocalChange();
+        };
+
+        // 监听 PROJECT_CHANGED 事件
+        const projectChangedHandler = () => {
+            if (isApplyingRemoteChange.current) return;
+            detectLocalChange();
+        };
+
+        // 监听 targetsUpdate 事件
+        const targetsUpdateHandler = () => {
+            if (isApplyingRemoteChange.current) return;
+            detectLocalChange();
+        };
+
+        vmHandlersRef.current = {
+            workspaceUpdate: workspaceUpdateHandler,
+            projectChanged: projectChangedHandler,
+            targetsUpdate: targetsUpdateHandler
+        };
+
+        currentVm.on('workspaceUpdate', workspaceUpdateHandler);
+        currentVm.on('PROJECT_CHANGED', projectChangedHandler);
+        currentVm.on('targetsUpdate', targetsUpdateHandler);
+
+        console.log('[协作] 已注册 VM 事件监听（实时后台同步模式）');
+    }, [detectLocalChange]);
+
+    // 移除 VM 事件监听
+    const unregisterVMListeners = useCallback(() => {
+        const currentVm = vmRef.current;
+        if (!currentVm) return;
+
+        const handlers = vmHandlersRef.current;
+        if (handlers.workspaceUpdate) {
+            currentVm.off('workspaceUpdate', handlers.workspaceUpdate);
+        }
+        if (handlers.projectChanged) {
+            currentVm.off('PROJECT_CHANGED', handlers.projectChanged);
+        }
+        if (handlers.targetsUpdate) {
+            currentVm.off('targetsUpdate', handlers.targetsUpdate);
+        }
+
+        vmHandlersRef.current = {};
+        console.log('[协作] 已移除 VM 事件监听');
+    }, []);
+
+    // 兼容入口：外部触发时执行非静默同步
+    const handleManualSync = useCallback(async () => {
+        await handleBackgroundSync(false, 'manual');
+    }, [handleBackgroundSync]);
+
+    // 处理同步响应（缓存远程修改，并自动后台合并）
     const handleSyncResponse = useCallback(async (syncData, fromUserId) => {
         console.log('[协作] 收到远程同步数据，发送者:', fromUserId, '当前用户:', currentUserIdRef.current);
 
@@ -733,7 +776,7 @@ const CollaborationManager = forwardRef(({ vm, onCollaborationStart, onCollabora
             return;
         }
 
-        // 缓存远程修改，等待用户点击同步按钮时合并
+        // 缓存远程修改，自动后台合并
         pendingRemoteChanges.current.push({
             projectJSON: syncData.projectJSON,
             targetId: syncData.targetId,
@@ -741,12 +784,12 @@ const CollaborationManager = forwardRef(({ vm, onCollaborationStart, onCollabora
             userId: fromUserId
         });
 
-        // 更新状态，提示用户有待合并的远程修改
+        // 更新状态，并触发后台自动合并
         setHasPendingRemoteChanges(true);
 
         console.log('[协作] 远程修改已缓存，当前缓存数量:', pendingRemoteChanges.current.length);
-        toastManager.info('有新的远程修改，点击同步按钮合并', 3000);
-    }, []);
+        scheduleRemoteMerge();
+    }, [scheduleRemoteMerge]);
 
     // 处理项目同步（新用户加入时收到）
     const handleProjectSync = useCallback(async (syncData) => {
@@ -917,7 +960,7 @@ const CollaborationManager = forwardRef(({ vm, onCollaborationStart, onCollabora
                 }
             }
             
-            // 注册 VM 事件监听（手动同步模式）
+            // 注册 VM 事件监听（实时后台同步模式）
             registerVMListeners();
             
             // 请求项目快照（新用户加入时）
@@ -933,18 +976,26 @@ const CollaborationManager = forwardRef(({ vm, onCollaborationStart, onCollabora
         // 注册断开连接回调
         collaborationAPI.on('disconnect', () => {
             console.log('[协作] 连接断开');
+
+            const wasCollaborating = isCollaboratingRef.current || connectionStatusRef.current === 'connected';
+
             setConnectionStatus('disconnected');
             setIsCollaborating(false);
             setConnectedUsers([]);
             setSyncStatus('idle');
-            
-            toastManager.warning('协作连接已断开', 3000);
-            
-            if (onCollaborationEndRef.current) {
-                onCollaborationEndRef.current();
+
+            // 仅在已进入协作后断开时提示“协作结束”相关信息
+            if (wasCollaborating) {
+                toastManager.warning('协作连接已断开', 3000);
+
+                if (onCollaborationEndRef.current) {
+                    onCollaborationEndRef.current();
+                }
+
+                unregisterVMListeners();
+            } else {
+                console.log('[协作] 连接在建立前已关闭，跳过协作结束回调');
             }
-            
-            unregisterVMListeners();
         });
 
         // 注册错误回调
@@ -1006,6 +1057,8 @@ const CollaborationManager = forwardRef(({ vm, onCollaborationStart, onCollabora
         // 清理函数
         return () => {
             console.log('[协作] 组件卸载，清理资源');
+            clearAutoSyncTimer();
+            clearRemoteMergeTimer();
             unregisterVMListeners();
             collaborationAPI.disconnect();
         };
